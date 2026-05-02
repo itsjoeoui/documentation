@@ -1,0 +1,89 @@
+---
+title: Library and Custom Instruments
+description: Develop a custom instrument type
+---
+
+<Info>The Nominal Instrumentation Library is in alpha testing for some of our customers. If you would like to try out the Instrumentation Library, but do not currently have access, please reach out to us through our [Support Portal](https://portal.usepylon.com/nominal).</Info>
+
+<Tip>
+**Looking to add a new vendor or model to a supported instrument type?**
+
+This page covers building an entirely new instrument type using `NominalInstrument`. If your instrument already fits one of the supported types but your specific vendor or model is not listed, see the custom driver development guide for that instrument type:
+
+- [Power Supplies](/instrumentation/psu#custom-driver-development)
+- [Electronic Loads](/instrumentation/eload#custom-driver-development)
+- [Digital Multimeters](/instrumentation/dmm#custom-driver-development)
+- [Data Acquisition](/instrumentation/daq#driver-development)
+- [I2C](/instrumentation/i2c/overview#driver-development)
+</Tip>
+
+# Library
+
+## NominalInstrument
+`NominalInstrument` is the base class for all instrument types. It's responsibilities include.
+* Handling background daemons for synchronous instrument communication.
+* Holds the `publisher`s an instrument will use.
+* Creates and holds the communication interface for the instrument.
+
+When creating a custom instrument type, you must subclass `NominalInstrument`.
+
+## Measurements and Commands
+Within a `NominalInstrument`, data is packaged into `Measurement` and `Command` objects when data is read from or sent to an instrument, respectively.
+
+The rationale for this is:
+1. Consistency regardless of instrument type or vendor.
+2. Interoperability of publishers across instrument types.
+3. Better integration with Nominal ecosystem by enforcing certain data is always be present, like timestamps.
+
+Both of these classes are imported via `nominal_instro.lib`
+
+### Measurement
+A `Measurement` object should be created when reading data from an instrument.
+```py
+@dataclass
+class Measurement:
+    """Data structure to hold measurement data. All channels have a common timebase."""
+
+    channel_data: dict[str, list[float]]
+    timestamps: list[int]
+    tags: dict[str, str] | None = None
+```
+
+### Command
+A `Command` object should be created when telling an instrument to do something.
+```py
+@dataclass
+class Command:
+    """Data structure to hold command data."""
+
+    # Same as Measurement, but with a single datapoint per channel
+    channel_data: dict[str, float | str]
+    timestamp: int
+    tags: dict[str, str] | None = None
+```
+
+### Parameters
+
+- **`channel_data: dict[str, list[float]]`**
+  This dictionary maps <Tooltip tip="A named signal for a series of measurements or computed values (example: voltage, pressure, system state).">channel</Tooltip> names (or numbers, as strings) to lists of numeric measurements. For example, if your instrument has channels `"my_thermocouple1"` and `"my_thermocouple2"`, and you collected 10 samples from each, `channel_data` might look like:
+  ```python
+  {
+      "my_thermocouple1": [0.123, 0.124, ...],
+      "my_thermocouple2": [0.223, 0.224, ...],
+  }
+  ```
+- **`timestamps: list[int]`**
+  A list of POSIX timestamps (in integer milliseconds) for each measurement sample, aligned with the values in `channel_data`. The length of `timestamps` should match the length of each list in `channel_data`.
+
+- **`tags: dict[str, str] | None`**
+  Optional metadata associated with this measurement acquisition. Common tags include test IDs, operator name, or environmental qualifiers. Useful for search, provenance, and analysis.
+
+# Custom Instrumentation
+Nominal Instrumentation provides a framework for developing instruments that do not ship with the library.
+This allows an engineer with domain knowledge of an instrument type the ability to develop new functionality within
+a paradigm that grants the features of other instruments within Nominal Instrumentation.
+
+This is different than custom driver development within an existing instrument type. For example, if Nominal does not provide an RF Power Meter instrument type but you want the `nominal-instro` experience, creating a custom instrument type using `NominalInstrument` is the path forward.
+
+## How to
+Coming soon...

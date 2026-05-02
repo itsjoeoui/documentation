@@ -1,0 +1,303 @@
+---
+title: Digital Multimeter (DMM)
+description: Using NominalDMM for SCPI-based digital multimeters
+---
+
+<Info>The Nominal Instrumentation Library is in alpha testing for some of our customers. If you would like to try out the Instrumentation Library, but do not currently have access, please reach out to us through our [Support Portal](https://portal.usepylon.com/nominal).</Info>
+
+# NominalDMM
+
+NominalDMM is a hardware abstraction layer (HAL) that provides a unified interface for SCPI-based digital multimeters from multiple vendors. The key benefit is **vendor-independent code**: the library auto-detects your DMM via the `*IDN?` query and loads the appropriate driver automatically.
+
+## Supported Vendors
+
+- **Agilent / HP / Keysight** - 34401A and compatible DMMs via SCPI/VISA (GPIB, RS-232)
+- **Keithley** - 2400 SourceMeter (measurement-only mode) via SCPI/VISA
+
+All supported DMMs communicate using SCPI commands over VISA (TCP/IP, USB, Serial, or GPIB).
+
+If your vendor or model is not listed, [custom driver development](#custom-driver-development) is available to add support for your instrument.
+
+## Key Concepts
+
+### Lifecycle Pattern
+
+The typical NominalDMM workflow follows this pattern:
+
+1. **`auto_create()`** - Instantiate the DMM with automatic vendor detection
+2. **`open()`** - Establish VISA connection to the hardware
+3. **Configure measurement** - Set measurement function (e.g. DC voltage, resistance)
+4. Optionally set resolution, aperture, and range.
+4. **`read()`** - Trigger a measurement and get the value
+5. **`close()`** - Disconnect from hardware
+
+Optionally, you can use background fetching with NominalDMM using `start()` and `stop()`, but it is an atypical use case.
+See [Two ways to get data](/instrumentation/overview#two-ways-to-get-data) for more information regarding background fetching of measurements.
+
+### Measurement Functions
+
+NominalDMM supports these measurement functions (availability depends on the driver):
+
+- **DC Voltage** - DC voltage
+- **AC Voltage** - AC voltage
+- **DC Current** - DC current
+- **AC Current** - AC current
+- **2-Wire Resistance** - Two-wire resistance
+- **4-Wire Resistance** - Four-wire resistance
+
+You must call `set_measurement_function()` before configuring resolution, aperture, range, or calling `read()`.
+
+## Creating a NominalDMM Instance
+
+Use the `auto_create()` method to instantiate a NominalDMM with automatic driver selection:
+
+```python
+from nominal_instro.instruments import NominalDMM
+from nominal_instro.lib import ConnectConfig, SerialConfig
+
+# Example of a serial instrument
+dmm = NominalDMM.auto_create(
+    name="myDMM",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE, serial_config=SerialConfig(baud_rate=9600))
+)
+```
+
+### Parameters
+
+- **`name`**: A name for this DMM instance. Used as a prefix for <Tooltip tip="A named signal for a series of measurements or computed values (example: voltage, pressure, system state).">channel</Tooltip> names when using a publisher.
+- **`resource`**: ConnectConfig object with VISA resource string (and optional serial config for RS-232)
+- **`publishers`**: Optional list of publishers to attach
+- **`**kwargs`**: Additional keyword arguments become default tags when using a publisher that supports tags (like `NominalCorePublisher`).
+
+### How Auto-Discovery Works
+
+When you call `auto_create()`, NominalDMM automatically detects which vendor and model you're using by querying the instrument at the provided VISA address and matching it to the appropriate driver.
+
+This means you don't need to manually specify the vendor or model - just provide the VISA address and `auto_create()` handles the rest.
+
+<Warning>
+**Unsupported Instruments**
+
+If `auto_create()` cannot find a matching driver for your instrument, you may need to create a custom driver. See the [Custom Driver Development](#custom-driver-development) section for guidance.
+</Warning>
+
+## Examples
+
+All measurement methods return [`Measurement`](/instrumentation/library#measurement) objects. This is common amongst all `NominalInstrument` objects.
+
+### Basic Usage
+
+```python
+from nominal_instro.instruments import NominalDMM
+from nominal_instro.instruments.dmm import MeasurementFunction
+from nominal_instro.lib import ConnectConfig
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+VISA_RESOURCE = "ASRL17::INSTR"
+DATASET_RID = "<your dataset here>"
+
+dmm = NominalDMM.auto_create(
+    name="myDMM",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE),
+)
+dmm.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+dmm.open()
+
+# Configure for DC voltage measurement
+dmm.set_measurement_function(MeasurementFunction.DC_VOLTAGE)
+# Optional: set resolution, aperture, or range
+# dmm.set_digits(6)
+# dmm.set_aperture_nplc(nplc=1.0)
+# dmm.set_range(None)  # auto range
+
+# Trigger a measurement
+measurement = dmm.read()
+print(f"DC Voltage: {measurement.latest}")
+
+dmm.close()
+```
+
+<Note>
+**Important Note about Publishers**
+
+Data is published as a direct result of an instrument method being called.
+
+For example, when you call `read()`, this not only triggers a measurement and returns the value but also causes all attached Publishers to publish the measurement response automatically.
+</Note>
+
+## Method Reference
+
+| Method | Purpose |
+|--------|---------|
+| `auto_create(name, resource, publishers=None, **kwargs)` | Factory method with automatic driver discovery |
+| `open()` | Establish VISA connection to the DMM |
+| `close()` | Disconnect from DMM and close all publishers |
+| `set_measurement_function(function)` | Set measurement function (DC_VOLTAGE, AC_VOLTAGE, DC_CURRENT, AC_CURRENT, TWO_WIRE_RESISTANCE, FOUR_WIRE_RESISTANCE) |
+| `set_digits(n)` | Set resolution in digits (driver-dependent) |
+| `set_aperture_seconds(seconds)` | Set integration time in seconds |
+| `set_aperture_nplc(nplc)` | Set integration time in power line cycles |
+| `set_range(value)` | Set manual range in current function's units; None = auto range |
+| `read()` | Trigger a measurement and return a Measurement |
+
+---
+
+# Custom Driver Development
+
+This section is for developers implementing NominalDMM support for SCPI DMM vendors that are not supported out of the box and not available through `auto_create()`.
+
+## Overview
+
+Driver developers implement the `DMMDriverDataHandler` abstract interface to add support for new DMM vendors. The driver is responsible for **translating NominalDMM's vendor-independent API calls into vendor-specific SCPI commands**, ensuring users get consistent behavior regardless of the underlying hardware.
+
+## Driver Responsibilities
+
+A DMM driver must:
+
+1. **IDN Matching**: Implement `match_idn()` to identify if this driver can handle a given DMM based on its `*IDN?` response
+2. **SCPI Command Mapping**: Translate each abstract method into vendor-specific SCPI commands
+3. **Response Parsing**: Convert SCPI string responses to the expected Python types (float)
+4. **Error Checking**: Query the instrument's error queue and raise exceptions when errors occur. This should occur after each write to the instrument in order to isolate which command caused the error.
+
+## DMMDriverDataHandler Interface
+
+All SCPI DMM drivers must subclass `DMMDriverDataHandler` and implement these abstract methods:
+
+### Required Methods
+
+```python
+@classmethod
+def match_idn(cls, idn: str) -> bool:
+    """Return True if this driver supports the given IDN string.
+
+    Args:
+        idn: The *IDN? response string from the instrument
+
+    Returns:
+        True if this driver can handle the instrument, False otherwise
+    """
+
+def set_measurement_function(self, function: MeasurementFunction) -> None:
+    """Send SCPI command to set the measurement function.
+
+    Args:
+        function: The measurement function (DC_VOLTAGE, AC_VOLTAGE, etc.)
+    """
+
+def measure_dc_voltage(self) -> float:
+    """Trigger a DC voltage measurement and return the value in volts."""
+
+def measure_ac_voltage(self) -> float:
+    """Trigger an AC voltage measurement and return the value in volts."""
+
+def measure_dc_current(self) -> float:
+    """Trigger a DC current measurement and return the value in amperes."""
+
+def measure_ac_current(self) -> float:
+    """Trigger an AC current measurement and return the value in amperes."""
+
+def measure_resistance(self) -> float:
+    """Trigger a resistance measurement and return the value in ohms."""
+
+def measure_four_wire_resistance -> float:
+    """Trigger a 4-wire resistance measurement and return the value in ohms.
+
+def check_errors(self) -> None:
+    """Query the error queue and raise an exception if errors exist.
+
+    Raises:
+        RuntimeError: If the instrument reports an error
+    """
+```
+
+Optional overrides (raise `NotImplementedError` if not supported):
+
+- **`set_digits(n)`** - Set resolution in digits
+- **`set_aperture_seconds(seconds)`** - Set integration time in seconds
+- **`set_aperture_nplc(nplc)`** - Set integration time in number of power line cycles
+- **`set_range(value)`** - Set manual range; None = auto range
+
+### Data Handler Access
+
+Use `self.data_handler` to communicate with the instrument via SCPI:
+
+- **`self.data_handler.send(command)`** - Send a SCPI command (no response expected)
+- **`self.data_handler.query(command)`** - Send a SCPI query and receive the response string
+
+### NominalDMM State Information
+
+Drivers have access to the state information of `NominalDMM` via the `APINominalDMM` interface available as an attribute, `self.hal`. Use `self.hal.measurement_function` to get the current measurement function if the implementation for methods like `set_digits`, `set_aperture_seconds`, `set_aperture_nplc`, and `set_range` depend on the measurement function.
+
+
+<Tip>
+**Vendor SCPI Variations**
+
+Different DMM vendors use different SCPI command sets:
+- **Agilent 34401A**: `CONF:VOLT:DC DEF`, `READ?`
+- **Keithley 2400**: `:SENS:FUNC 'VOLT'`, `:READ?`
+
+Always consult your DMM's programming manual for the correct SCPI syntax.
+</Tip>
+
+## Using Custom Drivers
+
+For custom drivers that aren't automatically registered, you can construct `NominalDMM` directly and pass your driver instance:
+
+```python
+from nominal_instro.instruments.dmm import NominalDMM
+from nominal_instro.instruments.dmm.driver import DMMDriverDataHandler
+from nominal_instro.instruments.dmm.types import MeasurementFunction
+from nominal_instro.lib import ConnectConfig
+
+class MyCustomDMMDriver(DMMDriverDataHandler):
+    """Custom driver for my lab's proprietary DMM."""
+
+    @classmethod
+    def match_idn(cls, idn: str) -> bool:
+        return "MyLabDMM" in idn
+
+    def set_measurement_function(self, function: MeasurementFunction) -> None:
+        self.data_handler.send(f"FUNC {function.value}")
+
+    def measure_dc_voltage(self) -> float:
+        return float(self.data_handler.query("MEAS:VOLT?"))
+
+    def measure_ac_voltage(self) -> float:
+        return float(self.data_handler.query("MEAS:VOLT:AC?"))
+
+    def measure_dc_current(self) -> float:
+        return float(self.data_handler.query("MEAS:CURR?"))
+
+    def measure_ac_current(self) -> float:
+        return float(self.data_handler.query("MEAS:CURR:AC?"))
+
+    def measure_resistance(self) -> float:
+        return float(self.data_handler.query("MEAS:RES?"))
+
+    def check_errors(self) -> None:
+        err = self.data_handler.query("ERR?")
+        if err != "OK":
+            raise RuntimeError(f"DMM error: {err}")
+
+# Construct NominalDMM with custom driver (not using auto_create)
+dmm = NominalDMM(
+    name="labDMM",
+    driver=MyCustomDMMDriver(),
+    connection_config=ConnectConfig(visa_resource="<VISA_ADDRESS>"),
+)
+
+dmm.open()
+dmm.set_measurement_function(MeasurementFunction.DC_VOLTAGE)
+measurement = dmm.read()
+dmm.close()
+```
+
+## Summary
+
+Driver development requires careful mapping of vendor-specific SCPI commands to the unified `NominalDMM` interface. Focus on:
+
+- Implementing all `DMMDriverDataHandler` abstract methods (and optional `set_digits`, `set_aperture_seconds`, `set_aperture_nplc`, `set_range` where supported)
+- Using correct SCPI syntax for your vendor (consult the programming manual)
+- Converting SCPI string responses to the expected Python types (float)
+- Querying and reporting errors from the instrument's error queue
+- Testing with actual hardware to ensure commands work as expected

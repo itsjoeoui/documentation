@@ -1,0 +1,495 @@
+---
+title: Power Supply (PSU)
+description: Using NominalPSU for SCPI-based programmable power supplies
+---
+
+<Info>The Nominal Instrumentation Library is in alpha testing for some of our customers. If you would like to try out the Instrumentation Library, but do not currently have access, please reach out to us through our [Support Portal](https://portal.usepylon.com/nominal).</Info>
+
+# NominalPSU
+
+NominalPSU is a hardware abstraction layer (HAL) that provides a unified interface for SCPI-based programmable power supplies from multiple vendors. The key benefit is **vendor-independent code**: the library auto-detects your PSU via the `*IDN?` query and loads the appropriate driver automatically.
+
+## Supported Vendors
+
+- **B&K Precision** - Various models via SCPI/VISA
+- **Siglent** - SPD series and others via SCPI/VISA
+- **Rigol** - DP series and others via SCPI/VISA
+- **TDK Lambda** - Genesys series and others via SCPI/VISA
+
+All supported PSUs communicate using SCPI commands over VISA (TCP/IP, USB, or Serial).
+
+If your vendor or model is not listed, [custom driver development](#custom-driver-development) is available to add support for your instrument.
+
+## Key Concepts
+
+### Lifecycle Pattern
+
+The typical NominalPSU workflow follows this pattern:
+
+1. **`auto_create()`** - Instantiate the PSU with automatic vendor detection
+2. **`open()`** - Establish VISA connection to the hardware
+3. **Configure and measure** - Set voltage/current limits, enable outputs, read measurements
+4. **`start()`** - Begins a periodic worker in the background. (Optional)
+5. **`stop()`** - End background worker (if started)
+6. **`close()`** - Disconnect from hardware
+
+## Creating a NominalPSU Instance
+
+Use the `auto_create()` method to instantiate a NominalPSU with automatic driver selection:
+
+```python
+from nominal_instro.instruments import NominalPSU
+from nominal_instro.lib import ConnectConfig
+
+psu = NominalPSU.auto_create(
+    name="myPSU",
+    resource=ConnectConfig(visa_resource="USB0::0xF4EC::0x1430::SPD3XJGQ806726::INSTR"),
+    num_channels=2
+)
+```
+
+### Parameters
+
+- **`name`**: A name for this PSU instance. Used as a prefix for channel names when using a publisher.
+- **`resource`**: ConnectConfig object with VISA resource string
+- **`num_channels`**: Number of output channels on the power supply
+- **`publishers`**: Optional list of publishers to attach
+- **`**kwargs`**: Additional keyword arguments become default tags when using a publisher that supports tags (like `NominalCorePublisher`).
+
+### How Auto-Discovery Works
+
+When you call `auto_create()`, NominalPSU automatically detects which vendor and model you're using by querying the instrument at the provided VISA address and matching it to the appropriate driver.
+
+This means you don't need to manually specify the vendor or model - just provide the VISA address and `auto_create()` handles the rest.
+
+<Warning>
+**Unsupported Instruments**
+
+If `auto_create()` cannot find a matching driver for your instrument, you may need to create a custom driver. See the [Custom Driver Development](#custom-driver-development) section for guidance.
+</Warning>
+
+## Examples
+
+All measurement methods return [`Measurement`](/instrumentation/library#measurement) objects. This is common amongst all `NominalInstrument` objects.
+### Basic Usage
+
+```python
+import time
+from nominal_instro.instruments import NominalPSU
+from nominal_instro.lib import ConnectConfig
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+VISA_RESOURCE = "USB0::0xF4EC::0x1430::SPD3XJGQ806726::INSTR"
+DATASET_RID = "<your dataset here>"
+
+psu = NominalPSU.auto_create(
+    name="myPSU",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE),
+    num_channels=2,
+)
+psu.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+psu.open()
+
+# Configure channel 1
+psu.set_current_limit(0.5, channel=1)
+psu.set_voltage(12.0, channel=1)
+psu.output_enable(True, channel=1)
+
+time.sleep(0.5)
+
+# Read channel 1
+voltage = psu.get_voltage(channel=1)
+current = psu.get_current(channel=1)
+status = psu.get_output_status(channel=1)
+print(f"V: {voltage.latest:.3f}V, I: {current.latest:.3f}A, On: {status.latest}")
+
+psu.output_enable(False, channel=1)
+psu.close()
+```
+
+### Background Worker for Continuous Monitoring
+
+```python
+import time
+from nominal_instro.instruments import NominalPSU
+from nominal_instro.lib import ConnectConfig
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+VISA_RESOURCE = "USB0::0xF4EC::0x1430::SPD3XJGQ806726::INSTR"
+DATASET_RID = "<your dataset here>"
+
+psu = NominalPSU.auto_create(
+    name="myPSU",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE),
+    num_channels=2,
+)
+psu.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+# Configure telemetry rate (optional, default is 1 second)
+psu.background_interval = 0.5  # Poll every 500ms
+
+psu.open()
+
+# Start background worker
+psu.start()
+
+# Configure channel 1
+psu.set_current_limit(0.5, channel=1)
+psu.set_voltage(12.0, channel=1)
+psu.output_enable(True, channel=1)
+
+# Data flows automatically to publishers
+while True:
+    try:
+        # Optionally grab data being produced by the background worker.
+        ch1_voltage = psu.get_channel(
+            channel_name = "myPSU.ch1_v",
+            length = 1,
+            wait_for_latest = True)  # This will block for the next sample from the background worker
+        ch1_current = psu.get_channel(
+            channel_name = "myPSU.ch1_i",
+            length = 5,
+            wait_for_latest = False)  # This will immedietly return with the last 5 measurements for this channel (if available).
+        print(f"Voltage, Channel 1: {ch1_voltage}")
+        print(f"Current, Channel 1: {ch1_curent}")
+    except KeyboardInterrupt:
+        print("Stopping...")
+        break
+
+psu.output_enable(False, channel=1)
+
+# Stop background worker
+psu.stop()
+psu.close()
+```
+
+In this mode:
+- `start()` begins a background worker, executing a function or list of functions periodically.
+- `stop()` ends the background worker.
+
+<Note>
+**Default PSU Background Worker**
+
+For each <Tooltip tip="A named signal for a series of measurements or computed values (example: voltage, pressure, system state).">channel</Tooltip>:
+- Output voltage (via `get_voltage()`)
+- Output current (via `get_current()`)
+- Output enable status (via `get_output_status()`)
+
+The default polling interval is 1 second, configurable via the `background_interval` property.
+</Note>
+
+**Custom Background Worker**
+* To define your own background worker, call `define_background_daemon()`.
+* To add a method to the background worker stack, call `add_background_daemon_function()`.
+
+See [Two ways to get data](/instrumentation/overview#two-ways-to-get-data) for more information regarding background fetching of measurements.
+
+<Note>
+**Important Note about Publishers**
+
+Data is published as a direct result of an instrument method being called.
+
+For example, when you call `get_voltage()`, this not only queries the instrument for the voltage but also causes all attached Publishers to publish the measurement response automatically.
+
+Therefore the background worker, when calling these instrument methods, is publishing data in the background as well!
+</Note>
+## Method Reference
+
+| Method | Purpose |
+|--------|---------|
+| `auto_create(name, resource, num_channels, publishers=None, **kwargs)` | Factory method with automatic driver discovery |
+| `open()` | Establish VISA connection to the PSU |
+| `close()` | Disconnect from PSU and close all publishers |
+| `set_voltage(voltage, channel=1)` | Set voltage setpoint in volts |
+| `get_voltage(channel=1)` | Read measured output voltage in volts |
+| `set_current_limit(current_limit, channel=1)` | Set current limit in amperes |
+| `get_current(channel=1)` | Read measured output current in amperes |
+| `output_enable(enable, channel=1)` | Enable (True) or disable (False) the output |
+| `get_output_status(channel=1)` | Query output enable state (returns Measurement with bool value) |
+| `start()` | Begin background telemetry thread |
+| `stop()` | End background telemetry thread |
+
+---
+
+# Simulated Power Supply
+
+For development and testing without physical hardware, Nominal Instrumentation includes a simulated SCPI power supply server. This allows you to test your code and workflows before connecting to real instruments.
+
+## Starting the Simulation Server
+
+Run the simulation server from the command line:
+
+```bash
+python -m nominal_instro.instruments.psu.scpi_sim_server
+```
+
+The server will start listening on `127.0.0.1:5025` and simulate a basic SCPI-compatible power supply.
+
+<Note>
+The simulation server runs indefinitely until you stop it with `Ctrl+C`. Leave it running in a terminal while you develop and test your code.
+</Note>
+
+## Using the Simulated PSU
+
+Connect to the simulated power supply using a socket-based VISA resource string:
+
+```python
+from nominal_instro.instruments import NominalPSU
+from nominal_instro.lib import ConnectConfig
+
+# Connect to the simulated PSU
+psu = NominalPSU.auto_create(
+    name="simPSU",
+    resource=ConnectConfig(visa_resource="TCPIP0::127.0.0.1::5025::SOCKET"),
+    num_channels=2
+)
+
+psu.open()
+
+# Use normally - the simulated PSU responds to all standard commands
+psu.set_voltage(12.0, channel=1)
+psu.set_current_limit(1.5, channel=1)
+psu.output_enable(True, channel=1)
+
+voltage = psu.get_voltage(channel=1)
+print(f"Voltage: {voltage.latest}V")
+
+psu.close()
+```
+
+## Use Cases
+
+The simulated PSU is useful for:
+
+- **Development**: Test your code without requiring physical hardware
+- **CI/CD**: Run automated tests in continuous integration environments
+- **Training**: Learn the NominalPSU API without risk to equipment
+- **Prototyping**: Design test sequences before hardware arrives
+
+<Note>
+The simulated PSU provides realistic responses but does not model physical behavior like voltage ripple, load regulation, or thermal effects. Always validate your code with real hardware before production use.
+</Note>
+
+---
+
+# Custom Driver Development
+
+This section is for developers implementing NominalPSU support for SCPI PSU vendors that are not supported out of the box and not available through `auto_create()`.
+
+## Overview
+
+Driver developers implement the `PSUDriverDataHandler` abstract interface to add support for new PSU vendors. The driver is responsible for **translating NominalPSU's vendor-independent API calls into vendor-specific SCPI commands**, ensuring users get consistent behavior regardless of the underlying hardware.
+
+## Driver Responsibilities
+
+A PSU driver must:
+
+1. **IDN Matching**: Implement `match_idn()` to identify if this driver can handle a given PSU based on its `*IDN?` response
+2. **SCPI Command Mapping**: Translate each abstract method into vendor-specific SCPI commands
+3. **Response Parsing**: Convert SCPI string responses to the expected Python types (float, bool)
+4. **Error Checking**: Query the instrument's error queue and raise exceptions when errors occur. This should occur after each write to the instrument in order to isolate which command caused the error.
+
+## PSUDriverDataHandler Interface
+
+All SCPI PSU drivers must subclass `PSUDriverDataHandler` and implement these abstract methods:
+
+### Required Methods
+
+```python
+@classmethod
+def match_idn(cls, idn: str) -> bool:
+    """Return True if this driver supports the given IDN string.
+
+    Args:
+        idn: The *IDN? response string from the instrument
+
+    Returns:
+        True if this driver can handle the instrument, False otherwise
+    """
+
+def set_voltage(self, voltage: float, channel: int = 1) -> None:
+    """Send SCPI command to set the voltage setpoint.
+
+    Args:
+        voltage: Voltage setpoint in volts
+        channel: Output channel number (default is 1)
+    """
+
+def get_voltage(self, channel: int = 1) -> float:
+    """Query and return the measured output voltage.
+
+    Args:
+        channel: Output channel number (default is 1)
+
+    Returns:
+        Measured voltage in volts
+    """
+
+def set_current_limit(self, current_limit: float, channel: int = 1) -> None:
+    """Send SCPI command to set the current limit.
+
+    Args:
+        current_limit: Current limit in amperes
+        channel: Output channel number (default is 1)
+    """
+
+def get_current(self, channel: int = 1) -> float:
+    """Query and return the measured output current.
+
+    Args:
+        channel: Output channel number (default is 1)
+
+    Returns:
+        Measured current in amperes
+    """
+
+def output_enable(self, enable: bool, channel: int = 1) -> None:
+    """Send SCPI command to enable or disable the output.
+
+    Args:
+        enable: True to enable output, False to disable
+        channel: Output channel number (default is 1)
+    """
+
+def get_output_status(self, channel: int = 1) -> bool:
+    """Query and return the output enable status.
+
+    Args:
+        channel: Output channel number (default is 1)
+
+    Returns:
+        True if output is enabled, False if disabled
+    """
+
+def check_errors(self) -> None:
+    """Query the error queue and raise an exception if errors exist.
+
+    Raises:
+        RuntimeError: If the instrument reports an error
+    """
+```
+
+### Data Handler Access
+
+Use `self.data_handler` to communicate with the instrument via SCPI:
+
+- **`self.data_handler.send(command)`** - Send a SCPI command (no response expected)
+- **`self.data_handler.query(command)`** - Send a SCPI query and receive the response string
+
+### NominalPSU State Information
+
+Drivers have access to the state information `NominalPSU` via the `APINominalPSU` interface available as an attribute, `self.hal`.  Currently, this interface is empty but may be extended in the future for driver-specific needs.
+
+## Implementation Example: Siglent Driver
+
+Here's a short example driver implementation for Siglent PSUs:
+
+```python
+from nominal_instro.instruments.psu.driver import PSUDriverDataHandler
+
+class SiglentPSUDriver(PSUDriverDataHandler):
+    """SCPI mapping for Siglent PSUs (e.g., SPD series)."""
+
+    @classmethod
+    def match_idn(cls, idn: str) -> bool:
+        """Match Siglent instruments by checking if IDN starts with 'Siglent'."""
+        return idn.startswith("Siglent")
+
+    def set_voltage(self, voltage: float, channel: int = 1) -> None:
+        """Set voltage using Siglent's CH<n>:VOLT command."""
+        self.data_handler.send(f"CH{channel}:VOLT {voltage:.3f}")
+
+    def get_voltage(self, channel: int = 1) -> float:
+        """Query measured voltage using MEAS:VOLT?"""
+        resp = self.data_handler.query(f"MEAS:VOLT? CH{channel}")
+        return float(resp)
+
+    def set_current_limit(self, current_limit: float, channel: int = 1) -> None:
+        """Set current limit using Siglent's CH<n>:CURR command."""
+        self.data_handler.send(f"CH{channel}:CURR {current_limit:.3f}")
+
+    def get_current(self, channel: int = 1) -> float:
+        """Query measured current using MEAS:CURR?"""
+        resp = self.data_handler.query(f"MEAS:CURR? CH{channel}")
+        return float(resp)
+
+    def output_enable(self, enable: bool, channel: int = 1) -> None:
+        """Enable or disable output using OUTP command."""
+        state = "ON" if enable else "OFF"
+        self.data_handler.send(f"OUTP CH{channel},{state}")
+
+    def get_output_status(self, channel: int = 1) -> bool:
+        """Query output status from Siglent's status register."""
+        # Siglent uses a status register that returns a hex value
+        resp = self.data_handler.query("SYST:STAT?")
+        value = int(resp, 16)
+        # Bit 4 (16) is CH1 enable, bit 5 (32) is CH2 enable
+        return bool(value & (16 << (channel - 1)))
+
+    def check_errors(self) -> None:
+        """Check Siglent error queue using SYST:ERR?"""
+        err = self.data_handler.query("SYST:ERR?")
+        if not err.startswith("+0"):
+            raise RuntimeError(f"Siglent PSU error: {err}")
+```
+
+<Tip>
+**Vendor SCPI Variations**
+
+Different PSU vendors use different SCPI command sets:
+- **Siglent**: `CH<n>:VOLT`, `MEAS:VOLT? CH<n>`
+- **Rigol**: `SOUR<n>:VOLT`, `MEAS:VOLT? CH<n>`
+- **TDK Lambda**: `VOLT`, `MEAS:VOLT?` (single channel)
+
+Always consult your PSU's programming manual for the correct SCPI syntax.
+</Tip>
+
+## Using Custom Drivers
+
+For custom drivers that aren't automatically registered, you can construct `NominalPSU` directly and pass your driver instance:
+
+```python
+from nominal_instro.instruments.psu import NominalPSU
+from nominal_instro.instruments.psu.driver import PSUDriverDataHandler
+from nominal_instro.lib import ConnectConfig
+
+class MyCustomPSUDriver(PSUDriverDataHandler):
+    """Custom driver for my lab's proprietary PSU."""
+
+    @classmethod
+    def match_idn(cls, idn: str) -> bool:
+        return "MyLabPSU" in idn
+
+    def set_voltage(self, voltage: float, channel: int = 1) -> None:
+        self.data_handler.send(f"VOLTAGE {voltage}")
+
+    # ... implement other required methods ...
+
+    def check_errors(self) -> None:
+        err = self.data_handler.query("ERR?")
+        if err != "OK":
+            raise RuntimeError(f"PSU error: {err}")
+
+# Construct NominalPSU with custom driver (not using auto_create)
+psu = NominalPSU(
+    name="labPSU",
+    connection_config=ConnectConfig(visa_resource="<VISA_ADDRESS>"),
+    driver=MyCustomPSUDriver(),
+    num_channels=1
+)
+
+psu.open()
+psu.set_voltage(12.0, channel=1)
+psu.close()
+```
+
+## Summary
+
+Driver development requires careful mapping of vendor-specific SCPI commands to the unified `NominalPSU` interface. Focus on:
+
+- Implementing all `PSUDriverDataHandler` abstract methods
+- Using correct SCPI syntax for your vendor (consult the programming manual)
+- Converting SCPI string responses to the expected Python types
+- Querying and reporting errors from the instrument's error queue
+- Testing with actual hardware to ensure commands work as expected

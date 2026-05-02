@@ -1,0 +1,503 @@
+---
+title: Electronic Load (ELoad)
+description: Using NominalELoad for SCPI-based programmable electronic loads
+---
+
+<Info>The Nominal Instrumentation Library is in alpha testing for some of our customers. If you would like to try out the Instrumentation Library, but do not currently have access, please reach out to us through our [Support Portal](https://portal.usepylon.com/nominal).</Info>
+
+# NominalELoad
+
+NominalELoad is a hardware abstraction layer (HAL) that provides a unified interface for SCPI-based programmable electronic loads from multiple vendors. The key benefit is **vendor-independent code**: the library auto-detects your electronic load via the `*IDN?` query and loads the appropriate driver automatically.
+
+## Supported Vendors
+
+- **B&K Precision** - 85xx Series via SCPI/VISA
+
+All supported electronic loads communicate using SCPI commands over VISA (TCP/IP, USB, or Serial).
+
+If your vendor or model is not listed, [custom driver development](#custom-driver-development) is available to add support for your instrument.
+
+## Key Concepts
+
+### Lifecycle Pattern
+
+The typical NominalELoad workflow follows this pattern:
+
+1. **`auto_create()`** - Instantiate the electronic load with automatic vendor detection
+2. **`open()`** - Establish VISA connection to the hardware
+3. **Configure and measure** - Set operating mode, level, range, and read measurements
+4. **`start()`** - Begins a periodic worker in the background. (Optional)
+5. **`stop()`** - End background worker (if started)
+6. **`close()`** - Disconnect from hardware
+
+### Operating Modes
+
+Electronic loads can operate in four different modes:
+
+- **CC (Constant Current)** - The load draws a constant current regardless of voltage
+- **CV (Constant Voltage)** - The load maintains a constant voltage across its terminals
+- **CR (Constant Resistance)** - The load simulates a constant resistance
+- **CP (Constant Power)** - The load draws constant power
+
+<Note>
+**Mode Configuration Required**
+
+The operating mode must be set using `set_mode()` before you can configure the level or range. Not all electronic loads support all four modes - consult your instrument's manual.
+</Note>
+
+## Creating a NominalELoad Instance
+
+Use the `auto_create()` method to instantiate a NominalELoad with automatic driver selection:
+
+```python
+from nominal_instro.instruments import NominalELoad
+from nominal_instro.lib import ConnectConfig
+
+eload = NominalELoad.auto_create(
+    name="myELoad",
+    resource=ConnectConfig(visa_resource="USB0::0x0614::0x0960::8514B12345::INSTR"),
+)
+```
+
+### Parameters
+
+- **`name`**: A name for this electronic load instance. Used as a prefix for channel names when using a publisher.
+- **`resource`**: ConnectConfig object with VISA resource string
+- **`publishers`**: Optional list of publishers to attach
+- **`**kwargs`**: Additional keyword arguments become default tags when using a publisher that supports tags (like `NominalCorePublisher`).
+
+### How Auto-Discovery Works
+
+When you call `auto_create()`, NominalELoad automatically detects which vendor and model you're using by querying the instrument at the provided VISA address and matching it to the appropriate driver.
+
+This means you don't need to manually specify the vendor or model - just provide the VISA address and `auto_create()` handles the rest.
+
+<Warning>
+**Unsupported Instruments**
+
+If `auto_create()` cannot find a matching driver for your instrument, you may need to create a custom driver. See the [Custom Driver Development](#custom-driver-development) section for guidance.
+</Warning>
+
+## Examples
+
+All measurement methods return [`Measurement`](/instrumentation/library#measurement) objects. This is common amongst all `NominalInstrument` objects.
+
+### Basic Usage
+
+```python
+import time
+from nominal_instro.instruments import NominalELoad
+from nominal_instro.instruments.eload import LoadMode
+from nominal_instro.lib import ConnectConfig
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+VISA_RESOURCE = "USB0::0x0614::0x0960::8514B12345::INSTR"
+DATASET_RID = "<your dataset here>"
+
+eload = NominalELoad.auto_create(
+    name="myELoad",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE),
+)
+eload.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+eload.open()
+
+# Configure for constant current mode
+eload.set_mode(LoadMode.CC, channel=1)
+eload.set_range(10.0, channel=1)  # Set range for up to 10A
+eload.set_level(2.5, channel=1)   # Draw 2.5A
+
+# Enable the load
+eload.output_enable(True, channel=1)
+
+time.sleep(0.5)
+
+# Read measurements
+voltage = eload.get_voltage(channel=1)
+current = eload.get_current(channel=1)
+print(f"V: {voltage.latest:.3f}V, I: {current.latest:.3f}A")
+
+# Disable the load
+eload.output_enable(False, channel=1)
+eload.close()
+```
+
+### Background Worker for Continuous Monitoring
+
+```python
+import time
+from nominal_instro.instruments import NominalELoad
+from nominal_instro.instruments.eload import LoadMode
+from nominal_instro.lib import ConnectConfig
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+VISA_RESOURCE = "USB0::0x0614::0x0960::8514B12345::INSTR"
+DATASET_RID = "<your dataset here>"
+
+eload = NominalELoad.auto_create(
+    name="myELoad",
+    resource=ConnectConfig(visa_resource=VISA_RESOURCE),
+)
+eload.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+# Configure telemetry rate (optional, default is 1 second)
+eload.background_interval = 0.5  # Poll every 500ms
+
+eload.open()
+
+# Start background worker
+eload.start()
+
+# Configure constant power mode
+eload.set_mode(LoadMode.CP, channel=1)
+eload.set_range(100.0, channel=1)  # Set range for up to 100W
+eload.set_level(25.0, channel=1)   # Draw 25W
+eload.output_enable(True, channel=1)
+
+# Data flows automatically to publishers
+while True:
+    try:
+        # Optionally grab data being produced by the background worker.
+        ch1_voltage = eload.get_channel(
+            channel_name = "myELoad.ch1_v",
+            length = 1,
+            wait_for_latest = True)  # This will block for the next sample from the background worker
+        ch1_current = eload.get_channel(
+            channel_name = "myELoad.ch1_i",
+            length = 5,
+            wait_for_latest = False)  # This will immedietly return with the last 5 measurements for this channel (if available).
+
+    except KeyboardInterrupt:
+        print("Stopping...")
+        break
+
+eload.output_enable(False, channel=1)
+
+# Stop background worker
+eload.stop()
+eload.close()
+```
+
+In this mode:
+- `start()` begins a background worker, executing a function or list of functions periodically.
+- `stop()` ends the background worker.
+
+<Note>
+**Default ELoad Background Worker**
+
+For each <Tooltip tip="A named signal for a series of measurements or computed values (example: voltage, pressure, system state).">channel</Tooltip>:
+- Output voltage (via `get_voltage()`)
+- Output current (via `get_current()`)
+
+The default polling interval is 1 second, configurable via the `background_interval` property.
+</Note>
+
+**Custom Background Worker**
+* To define your own background worker, call `define_background_daemon()`.
+* To add a method to the background worker stack, call `add_background_daemon_function()`.
+
+See [Two ways to get data](/instrumentation/overview#two-ways-to-get-data) for more information regarding background fetching of measurements.
+
+<Note>
+**Important Note about Publishers**
+
+Data is published as a direct result of an instrument method being called.
+
+For example, when you call `get_voltage()`, this not only queries the instrument for the voltage but also causes all attached Publishers to publish the measurement response automatically.
+
+Therefore the background worker, when calling these instrument methods, is publishing data in the background as well!
+</Note>
+
+## Method Reference
+
+| Method | Purpose |
+|--------|---------|
+| `auto_create(name, resource, publishers=None, **kwargs)` | Factory method with automatic driver discovery |
+| `open()` | Establish VISA connection to the electronic load |
+| `close()` | Disconnect from electronic load and close all publishers |
+| `set_mode(mode, channel=1)` | Set operating mode (CC, CV, CR, or CP) |
+| `set_level(value, channel=1, curr_limit=None)` | Set the operating level (A, V, Ω, or W depending on mode) |
+| `set_range(value, channel=1)` | Set the operating range for auto-ranging |
+| `set_slewrate(direction, rate, channel=1)` | Set current slew rate in A/μs |
+| `output_enable(enable, channel=1)` | Enable (True) or disable (False) the load input |
+| `short_output(enable, channel=1)` | Short the load channel (occurs immediately) |
+| `get_voltage(channel=1)` | Read measured input voltage |
+| `get_current(channel=1)` | Read measured input current |
+| `start()` | Begin background telemetry thread |
+| `stop()` | End background telemetry thread |
+
+---
+
+# Custom Driver Development
+
+This section is for developers implementing NominalELoad support for SCPI electronic load vendors that are not supported out of the box and not available through `auto_create()`.
+
+## Overview
+
+Driver developers implement the `ELoadDriverDataHandler` abstract interface to add support for new electronic load vendors. The driver is responsible for **translating NominalELoad's vendor-independent API calls into vendor-specific SCPI commands**, ensuring users get consistent behavior regardless of the underlying hardware.
+
+## Driver Responsibilities
+
+An electronic load driver must:
+
+1. **IDN Matching**: Implement `match_idn()` to identify if this driver can handle a given electronic load based on its `*IDN?` response
+2. **SCPI Command Mapping**: Translate each abstract method into vendor-specific SCPI commands
+3. **Response Parsing**: Convert SCPI string responses to the expected Python types (float, bool)
+4. **Error Checking**: Query the instrument's error queue and raise exceptions when errors occur. This should occur after each write to the instrument in order to isolate which command caused the error.
+
+## ELoadDriverDataHandler Interface
+
+All SCPI electronic load drivers must subclass `ELoadDriverDataHandler` and implement these abstract methods:
+
+### Required Methods
+
+```python
+@classmethod
+def match_idn(cls, idn: str) -> bool:
+    """Return True if this driver supports the given IDN string.
+
+    Args:
+        idn: The *IDN? response string from the instrument
+
+    Returns:
+        True if this driver can handle the instrument, False otherwise
+    """
+
+def set_mode(self, mode: LoadMode, channel: int) -> None:
+    """Send SCPI command to set the operating mode.
+
+    Args:
+        mode: Operating mode (CC, CV, CR, or CP)
+        channel: Channel number (default is 1)
+    """
+
+def set_level(self, mode: LoadMode, value: float, channel: int, curr_limit: float | None) -> None:
+    """Send SCPI command to set the operating level.
+
+    Args:
+        mode: Current operating mode
+        value: Level value (units depend on mode: A, V, Ω, or W)
+        channel: Channel number (default is 1)
+        curr_limit: Optional current limit (used in CV mode for protection)
+    """
+
+def set_range(self, mode: LoadMode, value: float, channel: int) -> None:
+    """Send SCPI command to set the operating range.
+
+    Args:
+        mode: Current operating mode
+        value: Maximum expected value for auto-ranging
+        channel: Channel number (default is 1)
+    """
+
+def set_slewrate(self, direction: SlewRateDirection, rate: float, channel: int) -> None:
+    """Send SCPI command to set the current slew rate.
+
+    Args:
+        direction: RISE, FALL, or BOTH
+        rate: Slew rate in A/μs
+        channel: Channel number (default is 1)
+    """
+
+def output_enable(self, enable: bool, channel: int) -> None:
+    """Send SCPI command to enable or disable the load input.
+
+    Args:
+        enable: True to enable input, False to disable
+        channel: Channel number (default is 1)
+    """
+
+def short_output(self, enable: bool, channel: int) -> None:
+    """Send SCPI command to short the load channel.
+
+    Args:
+        enable: True to short, False to unshort
+        channel: Channel number (default is 1)
+    """
+
+def get_voltage(self, channel: int) -> float:
+    """Query and return the measured input voltage.
+
+    Args:
+        channel: Channel number (default is 1)
+
+    Returns:
+        Measured voltage in volts
+    """
+
+def get_current(self, channel: int) -> float:
+    """Query and return the measured input current.
+
+    Args:
+        channel: Channel number (default is 1)
+
+    Returns:
+        Measured current in amperes
+    """
+
+def check_errors(self) -> None:
+    """Query the error queue and raise an exception if errors exist.
+
+    Raises:
+        RuntimeError: If the instrument reports an error
+    """
+```
+
+### Data Handler Access
+
+Use `self.data_handler` to communicate with the instrument via SCPI:
+
+- **`self.data_handler.send(command)`** - Send a SCPI command (no response expected)
+- **`self.data_handler.query(command)`** - Send a SCPI query and receive the response string
+
+### NominalELoad State Information
+
+Drivers have access to the state information `NominalELoad` maintains via the `APINominalELoad` interface available as an attribute, `self.hal`. `NominalELoad` keeps track of the settings a user has configured so that the driver doesn't have to keep track of state except where necessary due to vendor implementation details.
+
+```python
+class APINominalELoad(Protocol):
+    """API for the NominalELoad instrument type."""
+
+    @property
+    def mode(self) -> LoadMode:
+        """Get the current mode (CC, CR, CP, CV) of the E-Load."""
+        ...
+```
+
+This is useful for differences in how vendors expect someone to interact with their device. For example, accessing `self.hal.mode` gives you the current operating mode set by the user.
+
+## Implementation Example: B&K Precision Driver
+
+Here's the complete driver implementation for B&K Precision 85xx Series electronic loads:
+
+```python
+from nominal_instro.instruments.eload import ELoadDriverDataHandler, LoadMode, SlewRateDirection
+
+
+def loadmode_to_unit(mode: LoadMode) -> str:
+    """Convert LoadMode enum to SCPI unit keyword."""
+    return {
+        LoadMode.CC: "CURR",
+        LoadMode.CV: "VOLT",
+        LoadMode.CP: "POW",
+        LoadMode.CR: "RES",
+    }[mode]
+
+
+class BK85XXB(ELoadDriverDataHandler):
+    """SCPI mapping for B&K Precision 85xx Series electronic loads."""
+
+    @classmethod
+    def match_idn(cls, idn: str) -> bool:
+        """Match B&K Precision instruments by checking IDN string."""
+        return idn.startswith("B&K Precision") or idn.startswith("BK PRECISION")
+
+    def open(self) -> None:
+        """Set instrument to remote mode."""
+        self.data_handler.send("SYST:REM")
+
+    def set_mode(self, mode: LoadMode, channel: int) -> None:
+        """Set operating mode using FUNCtion command."""
+        self.data_handler.send(f"FUNCtion {loadmode_to_unit(mode)}")
+
+    def set_level(self, mode: LoadMode, value: float, channel: int, curr_limit: float | None) -> None:
+        """Set operating level for the current mode."""
+        mode = self.hal.mode
+        if mode is LoadMode.CV:
+            # TODO: Implement CV to CC protection based on curr_limit
+            pass
+        self.data_handler.send(f"{loadmode_to_unit(mode)} {value}")
+
+    def set_range(self, mode: LoadMode, value: float, channel: int) -> None:
+        """Set operating range for auto-ranging."""
+        self.data_handler.send(f"{loadmode_to_unit(mode)}:RANGe {value}")
+
+    def set_slewrate(self, direction: SlewRateDirection, rate: float, channel: int) -> None:
+        """Set current slew rate for specified direction."""
+        self.data_handler.send(f"CURRent:SLEW:{direction.value} {rate}")
+
+    def output_enable(self, enable: bool, channel: int) -> None:
+        """Enable or disable load input."""
+        self.data_handler.send(f"INPut {int(enable)}")
+
+    def short_output(self, enable: bool, channel: int) -> None:
+        """Short the load channel."""
+        self.data_handler.send(f"INPut:SHORt {int(enable)}")
+        self.output_enable(enable, channel)
+
+    def get_current(self, channel: int) -> float:
+        """Query measured current."""
+        current = float(self.data_handler.query("MEASure:CURRent?"))
+        return current
+
+    def get_voltage(self, channel: int) -> float:
+        """Query measured voltage."""
+        voltage = float(self.data_handler.query("MEASure:VOLTage?"))
+        return voltage
+
+    def check_errors(self) -> None:
+        """Check B&K Precision error queue using SYST:ERR?"""
+        err = self.data_handler.query("SYST:ERR?")
+        if not err.startswith("0"):
+            raise RuntimeError(f"B&K Precision electronic load error: {err}")
+```
+
+<Tip>
+**Vendor SCPI Variations**
+
+Different electronic load vendors use different SCPI command sets.
+Always consult your electronic load's programming manual for the correct SCPI syntax.
+</Tip>
+
+## Using Custom Drivers
+
+For custom drivers that aren't automatically registered, you can construct `NominalELoad` directly and pass your driver instance:
+
+```python
+from nominal_instro.instruments.eload import NominalELoad
+from nominal_instro.instruments.eload.driver import ELoadDriverDataHandler
+from nominal_instro.instruments.eload import LoadMode, SlewRateDirection
+from nominal_instro.lib import ConnectConfig
+
+class MyCustomELoadDriver(ELoadDriverDataHandler):
+    """Custom driver for my lab's proprietary electronic load."""
+
+    @classmethod
+    def match_idn(cls, idn: str) -> bool:
+        return "MyLabELoad" in idn
+
+    def set_mode(self, mode: LoadMode, channel: int) -> None:
+        self.data_handler.send(f"MODE {mode.value}")
+
+    def set_level(self, mode: LoadMode, value: float, channel: int, curr_limit: float | None) -> None:
+        self.data_handler.send(f"LEVEL {value}")
+
+    # ... implement other required methods ...
+
+    def check_errors(self) -> None:
+        err = self.data_handler.query("ERR?")
+        if err != "OK":
+            raise RuntimeError(f"Electronic load error: {err}")
+
+# Construct NominalELoad with custom driver (not using auto_create)
+eload = NominalELoad(
+    name="labELoad",
+    connection_config=ConnectConfig(visa_resource="<VISA_ADDRESS>"),
+    driver=MyCustomELoadDriver(),
+)
+
+eload.open()
+eload.set_mode(LoadMode.CC, channel=1)
+eload.set_level(5.0, channel=1)
+eload.close()
+```
+
+## Summary
+
+Driver development requires careful mapping of vendor-specific SCPI commands to the unified `NominalELoad` interface. Focus on:
+
+- Implementing all `ELoadDriverDataHandler` abstract methods
+- Using correct SCPI syntax for your vendor (consult the programming manual)
+- Converting SCPI string responses to the expected Python types
+- Querying and reporting errors from the instrument's error queue
+- Testing with actual hardware to ensure commands work as expected
