@@ -1,0 +1,34 @@
+---
+title: "Query instrument identity information"
+---
+
+```python get_information.py
+"""Example: Query instrument identity information.
+
+Demonstrates connecting to an instrument and querying `*IDN?`.
+
+"""
+
+from nominal_instro.lib import ConnectConfig, NominalInstrument, SerialConfig
+
+# This example shows using a serial resource with a baud rate of 9600 to get the identity of the instrument.
+VISA_RESOURCE = "ASRL3::INSTR"
+
+# Option 1, explicit control
+instr = NominalInstrument(
+    name="smu",
+    connection_config=ConnectConfig(visa_resource=VISA_RESOURCE, serial_config=SerialConfig(baud_rate=9600)),
+)
+
+instr.open()
+id = instr.get_identity()
+print(id)
+instr.close()
+
+# Option 2, helper method
+
+id = NominalInstrument.open_and_get_identity(
+    connection_config=ConnectConfig(visa_resource=VISA_RESOURCE, serial_config=SerialConfig(baud_rate=9600))
+)
+print(id)
+```

@@ -1,0 +1,19 @@
+---
+title: "NominalInstrument basic usage"
+---
+
+```python instrument.py
+"""Example: NominalInstrument basic usage."""
+
+from nominal_instro.lib import ConnectConfig, NominalInstrument
+from nominal_instro.lib.cominterface.cominterface import SerialConfig
+
+VISA_RESOURCE = "ASRL19::INSTR"
+DATASET_RID = "<dataset_rid>" # Replace with your dataset RID.
+
+dmm = NominalInstrument(name="DMM", connection_config=ConnectConfig(visa_resource="ASRL21::INSTR", serial_config=SerialConfig(baud_rate=9600)))
+dmm.open()
+identity = dmm.get_identity()
+print(identity)
+dmm.close()
+```

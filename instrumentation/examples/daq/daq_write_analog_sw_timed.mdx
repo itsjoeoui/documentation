@@ -1,0 +1,55 @@
+---
+title: "DAQ write analog SW timed"
+---
+
+```python daq_write_analog_sw_timed.py
+"""Example: DAQ write analog SW timed."""
+
+from nominal_instro.instruments import NominalDAQ
+from nominal_instro.instruments.daq.types import DAQVendor, Direction
+from nominal_instro.lib.publishers.nominal_core import NominalCorePublisher
+
+# Configuration: Choose your vendor.
+VENDOR = DAQVendor.LABJACK_T_SERIES
+
+# Vendor-specific configuration. For example purposes.
+# Each vendor uses different channel naming conventions and resource ID formats. See vendor documentation for details.
+match VENDOR:
+    case DAQVendor.LABJACK_T_SERIES:
+        CHANNEL_0 = "DAC0"
+        CHANNEL_1 = "DAC1"
+        RESOURCE_ID = "440020473"  # LabJack serial number
+    case DAQVendor.NI:
+        CHANNEL_0 = "ao0"
+        CHANNEL_1 = "ao1"
+        RESOURCE_ID = "Dev1"  # NI device name, as defined in MAX (e.g., "Dev1", "Dev2")
+    case DAQVendor.MCC:
+        CHANNEL_0 = "0"
+        CHANNEL_1 = "1"
+        RESOURCE_ID = "344371:0"  # MCC DAQ device ID, optionally suffixed with ":<board_number>" (default 0)
+
+# Nominal Core dataset to send data to as the instrument is oeprated.
+DATASET_RID = "<dataset_rid>" # Replace with your dataset RID. 
+
+### Main code
+
+daq = NominalDAQ.create(name="myDAQ", vendor=VENDOR, resource=RESOURCE_ID)
+daq.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+daq.open()
+
+try:
+    daq.configure_analog_channel(
+        direction=Direction.OUTPUT, physical_channel=CHANNEL_0, alias=f"ao_0", range_min=0, range_max=5
+    )
+    daq.configure_analog_channel(
+        direction=Direction.OUTPUT, physical_channel=CHANNEL_1, alias=f"ao_1", range_min=0, range_max=5
+    )
+
+    daq.write_analog_value("ao_0", 2.2)
+    daq.write_analog_value("ao_1", 3.4)
+
+finally:
+    print("Closing DAQ")
+    daq.close()
+```

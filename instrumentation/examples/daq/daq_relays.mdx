@@ -1,0 +1,56 @@
+---
+title: "Relay Control for DAQs with relays native to them"
+---
+
+```python daq_relays.py
+"""Example: Relay Control for DAQs with relays native to them."""
+import time
+
+from nominal_instro.instruments import NominalDAQ
+from nominal_instro.instruments.daq.types import DAQVendor, Direction, Logic
+from nominal_instro.lib.publishers import NominalCorePublisher
+
+# Configuration: Choose your vendor.
+VENDOR = DAQVendor.KEYSIGHT_34980
+
+# Vendor-specific configuration. For example purposes.
+# Each vendor uses different channel naming conventions and resource ID formats. See vendor documentation for details.
+match VENDOR:
+    case DAQVendor.KEYSIGHT_34980:
+        from nominal_instro.lib import ConnectConfig
+
+        CHANNEL_0 = "8001"
+        CHANNEL_1 = "8002"
+        RESOURCE_ID = ConnectConfig(visa_resource="USB0::0x0957::0x0507::MY44001757::INSTR")
+
+# Nominal Core dataset to send data to as the instrument is operated.
+DATASET_RID = "<dataset_rid>" # Replace with your dataset RID. 
+
+### Main code
+
+daq = NominalDAQ.create(name="myDAQ", vendor=VENDOR, resource=RESOURCE_ID)
+daq.add_publisher(NominalCorePublisher(dataset_rid=DATASET_RID))
+
+daq.open()
+
+try:
+    daq.configure_relay_channel(
+        physical_channel=CHANNEL_0,
+        alias="relay0"
+    )
+    daq.configure_relay_channel(
+        physical_channel=CHANNEL_1,
+        alias="relay1"
+    )
+    daq.close_relay("relay0")
+    time.sleep(1)
+    daq.close_relay("relay1")
+    time.sleep(1)
+    daq.open_relay("relay0")
+    time.sleep(1)
+    daq.open_relay("relay1")
+
+finally:
+    print("Closing DAQ")
+    daq.close()
+```
