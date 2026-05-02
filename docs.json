@@ -183,5 +183,11 @@
       "github": "https://github.com/nominal-io/instrumentation",
       "linkedin": "https://linkedin.com/company/nominal-io"
     }
+  },
+  "seo": {
+    "indexing": "all"
+  },
+  "interaction": {
+    "drilldown": false
   }
 }
