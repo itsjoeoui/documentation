@@ -147,6 +147,11 @@
           "anchor": "GitHub",
           "href": "https://github.com/nominal-io/instrumentation",
           "icon": "github"
+        },
+        {
+          "anchor": "Changelog",
+          "href": "https://nominal-io.github.io/instrumentation/changelog/",
+          "icon": "book"
         }
       ]
     }
