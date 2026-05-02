@@ -1,11 +1,17 @@
 ---
-title: Nominal Instrumentation
+title: Overview
 description: A Python library/framework for interfacing with hardware
 ---
 
-<Info>The Nominal Instrumentation Library is in alpha testing for some of our customers. If you would like to try out the Instrumentation Library, but do not currently have access, please reach out to us through our [Support Portal](https://portal.usepylon.com/nominal).</Info>
+<Info>
+  The Nominal Instrumentation Library is in alpha testing for some of our
+  customers. If you would like to try out the Instrumentation Library, but do
+  not currently have access, please reach out to us through our [Support
+  Portal](https://portal.usepylon.com/nominal).
+</Info>
 
 Nominal Instrumentation is a Python library with the following objectives:
+
 1. Accelerate the authoring of tests which rely on hardware instruments.
 2. Provide low-code integration with Nominal tools like Connect and Core.
 3. Define entry points for creating instrument interfaces and drivers that integrate with the library.
@@ -19,6 +25,7 @@ also extensible and useable by engineers who are Python savvy.
 ## Before: DAQ to Nominal Core
 
 Here's what is required to read data from various DAQ devices and stream data to Nominal Core.
+
 <AccordionGroup>
     <Accordion title="LabJack T-Series Devices">
         ```python
@@ -110,6 +117,7 @@ Here's what is required to read data from various DAQ devices and stream data to
             task.stop()
         ```
     </Accordion>
+
 </AccordionGroup>
 
 ## After: NominalDAQ
@@ -151,18 +159,19 @@ daq.close()
 ```
 
 # Key Concepts of Nominal Instrumentation
-* **Code to an interface**, not the specific instrument in use.
-* **Automatic data publishing** to Nominal Core and Nominal Connect out of the box by way of a customizable `Publisher` interface.
-* **Configurable background daemons** read and expose measurements to your script and your publishers.
+
+- **Code to an interface**, not the specific instrument in use.
+- **Automatic data publishing** to Nominal Core and Nominal Connect out of the box by way of a customizable `Publisher` interface.
+- **Configurable background daemons** read and expose measurements to your script and your publishers.
 
 ## Two ways to get data
 
 You can get measurements into your script in two ways. **Both options publish data** whenever a measurement is produced; the difference is who triggers the reads and how often.
 
-| | Background acquisition | On-demand acquisition |
-|--|------------------------|------------------------|
-| **How** | Call `start()`. A background daemon fetches from the instrument at a fixed, configurable rate. Use method `get_channel()` to pull the latest N values into your script if/when you need them. | Skip `start()`. Call the instrument's methods (e.g. `read_analog()`, `get_voltage()`) only when you want a measurement. Each call reads from the device and publishes the result. |
-| **Best for** | Simpler top-level apps where data should always be available and publishing. | Applications that only need measurements at specific times; lower system and bus usage. DMMs are a great example.|
+|              | Background acquisition                                                                                                                                                                        | On-demand acquisition                                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **How**      | Call `start()`. A background daemon fetches from the instrument at a fixed, configurable rate. Use method `get_channel()` to pull the latest N values into your script if/when you need them. | Skip `start()`. Call the instrument's methods (e.g. `read_analog()`, `get_voltage()`) only when you want a measurement. Each call reads from the device and publishes the result. |
+| **Best for** | Simpler top-level apps where data should always be available and publishing.                                                                                                                  | Applications that only need measurements at specific times; lower system and bus usage. DMMs are a great example.                                                                 |
 
 <Note>
 **Recommendation**
@@ -170,6 +179,7 @@ You can get measurements into your script in two ways. **Both options publish da
 We recommend the **background daemon pattern** for most workflows—data is always available and publishing, and it often simplifies application code, especially for bufferred acquisitions from a DAQ where you'd need to manage servicing a buffer yourself.
 
 Depending on your application, you may never need to call `get_channel()`, but the background daemon will always publish measurements for later analysis in tools like Nominal Core.
+
 </Note>
 
 Instrument-specific pages (e.g. [NominalDAQ](/instrumentation/daq)) describe the exact methods and timing options for each type.
@@ -190,38 +200,42 @@ Data is published as a direct result of an instrument method being called.
 For example, when you call `NominalPSU.get_voltage()`, this not only queries the instrument for the voltage but also causes all attached Publishers to publish the measurement response automatically.
 
 This makes it easy to ensure measurements and state changes are consistently recorded or streamed without explicitly managing yourself.
+
 </Note>
 
 ### Instrument Types
+
 These are the current instrument types that have been developed by Nominal and available out of the box.
 
-* `NominalPSU`: programmable Power Supplies
-* `NominalDAQ`: data Acquisition devices
-* `NominalELoad`: electronic Loads
-* `NominalI2C`: I2C master for communicating to peripherals on an I2C bus
+- `NominalPSU`: programmable Power Supplies
+- `NominalDAQ`: data Acquisition devices
+- `NominalELoad`: electronic Loads
+- `NominalI2C`: I2C master for communicating to peripherals on an I2C bus
 
 ### Drivers
+
 These are the current vendor/model specific drivers that have been developed by Nominal and are available out of the box.
 
-* `NominalPSU`
-   * B&K Precision
-   * Siglent
-   * Rigol
-   * TDK Lambda
-* `NominalDAQ`
-   * National Instruments (NI)
-   * LabJack T-Series
-   * Keysight 34980
-* `NominalELoad`
-   * B&K Precision 85xx Series
-* `NominalI2C`
-   * Total Phase Aardvark
-* `NominalDMM`
-   * Keithley 2400
-   * Agilent/HP/Keysight 34401A
+- `NominalPSU`
+  - B&K Precision
+  - Siglent
+  - Rigol
+  - TDK Lambda
+- `NominalDAQ`
+  - National Instruments (NI)
+  - LabJack T-Series
+  - Keysight 34980
+- `NominalELoad`
+  - B&K Precision 85xx Series
+- `NominalI2C`
+  - Total Phase Aardvark
+- `NominalDMM`
+  - Keithley 2400
+  - Agilent/HP/Keysight 34401A
 
 ### Publishers
+
 These are the current Publishers that have been developed by Nominal and available out of the box.
 
-* `NominalCorePublisher`: sends data to a Nominal Core dataset
-* `ConnectPublisher`: sends data to Nominal Connect client
+- `NominalCorePublisher`: sends data to a Nominal Core dataset
+- `ConnectPublisher`: sends data to Nominal Connect client
