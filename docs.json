@@ -188,6 +188,6 @@
     "indexing": "all"
   },
   "interaction": {
-    "drilldown": false
+    "drilldown": true
   }
 }
