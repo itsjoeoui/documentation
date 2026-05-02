@@ -1,8 +1,6 @@
-> **Customize this file**: Tailor this template to your project by noting specific contribution types you're looking for, adding a Code of Conduct, or adjusting the writing guidelines to match your style.
+# Contribute to the Nominal Instrumentation documentation
 
-# Contribute to the documentation
-
-Thank you for your interest in contributing to our documentation! This guide will help you get started.
+Thank you for your interest in contributing! This guide will help you get started.
 
 ## How to contribute
 
@@ -18,11 +16,9 @@ Thank you for your interest in contributing to our documentation! This guide wil
 2. Install the Mintlify CLI: `npm i -g mint`
 3. Create a branch for your changes
 4. Make changes
-5. Navigate to the docs directory and run `mint dev`
-6. Preview your changes at `http://localhost:3000`
-7. Commit your changes and submit a pull request
-
-For more details on local development, see our [development guide](development.mdx).
+5. Run `mint dev` from the repo root and preview at `http://localhost:3000`
+6. Run `mint broken-links` before opening a PR
+7. Commit and submit a pull request
 
 ## Writing guidelines
 

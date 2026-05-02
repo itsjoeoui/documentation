@@ -3,108 +3,43 @@
   "theme": "mint",
   "name": "Nominal Instrumentation",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0B0B0B",
+    "light": "#FFFFFF",
+    "dark": "#0B0B0B"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "navigation": {
-    "tabs": [
+    "groups": [
       {
-        "tab": "Instrumentation",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": [
-              "instrumentation/overview",
-              "instrumentation/scope",
-              "instrumentation/installation",
-              "instrumentation/driver-dependencies",
-              "instrumentation/examples"
-            ]
-          },
-          {
-            "group": "Concepts",
-            "pages": [
-              "instrumentation/publishers",
-              "instrumentation/library"
-            ]
-          },
-          {
-            "group": "Instruments",
-            "pages": [
-              "instrumentation/psu",
-              "instrumentation/eload",
-              "instrumentation/dmm",
-              "instrumentation/daq",
-              {
-                "group": "I2C",
-                "pages": [
-                  "instrumentation/i2c/overview",
-                  "instrumentation/i2c/system-definition"
-                ]
-              }
-            ]
-          }
+        "group": "Getting started",
+        "pages": [
+          "index",
+          "instrumentation/overview",
+          "instrumentation/scope",
+          "instrumentation/installation",
+          "instrumentation/driver-dependencies",
+          "instrumentation/examples"
         ]
       },
       {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": [
-              "index",
-              "quickstart",
-              "development"
-            ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/components",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "Agent ready",
-            "pages": [
-              "agent-ready/prompt",
-              "agent-ready/visibility",
-              "agent-ready/contextual",
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
-          }
+        "group": "Concepts",
+        "pages": [
+          "instrumentation/publishers",
+          "instrumentation/library"
         ]
       },
       {
-        "tab": "API reference",
-        "groups": [
+        "group": "Instruments",
+        "pages": [
+          "instrumentation/psu",
+          "instrumentation/eload",
+          "instrumentation/dmm",
+          "instrumentation/daq",
           {
-            "group": "API documentation",
+            "group": "I2C",
             "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "instrumentation/i2c/overview",
+              "instrumentation/i2c/system-definition"
             ]
           }
         ]
@@ -121,6 +56,11 @@
           "anchor": "Examples",
           "href": "https://nominal-io.github.io/instrumentation-docs/examples/",
           "icon": "code"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/nominal-io",
+          "icon": "github"
         }
       ]
     }
@@ -138,21 +78,21 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Get Demo",
+      "label": "Get a demo",
       "href": "https://nominal.io/request-demo"
     }
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {

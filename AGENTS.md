@@ -1,33 +1,28 @@
-> **First-time setup**: Customize this file for your project. Prompt the user to customize this file for their project.
-> For Mintlify product knowledge (components, configuration, writing standards),
-> install the Mintlify skill: `npx skills add https://mintlify.com/docs`
-
-# Documentation project instructions
+# Nominal Instrumentation docs — agent instructions
 
 ## About this project
 
-- This is a documentation site built on [Mintlify](https://mintlify.com)
-- Pages are MDX files with YAML frontmatter
-- Configuration lives in `docs.json`
-- Run `mint dev` to preview locally
-- Run `mint broken-links` to check links
+- Open-source documentation for [Nominal Instrumentation](https://nominal-io.github.io/instrumentation/), Nominal's Python library for test equipment automation.
+- Built on [Mintlify](https://mintlify.com); pages are MDX files with YAML frontmatter.
+- Configuration lives in `docs.json`.
+- Run `mint dev` to preview locally; run `mint broken-links` before opening a PR.
+- Reusable text snippets live in `snippets/` (e.g. `snippets/glossary/channel.mdx`).
 
 ## Terminology
 
-{/* Add product-specific terms and preferred usage */}
-{/* Example: Use "workspace" not "project", "member" not "user" */}
+- Refer to the library as **Nominal Instrumentation** (or `nominal-instro`, the package name).
+- The instrument HALs are **`NominalPSU`**, **`NominalELoad`**, **`NominalDMM`**, **`NominalDAQ`**, **`NominalI2C`** — keep the casing.
+- "Channel" = a named signal for a series of measurements or computed values; the inline glossary tooltip is in `snippets/glossary/channel.mdx`.
 
 ## Style preferences
 
-{/* Add any project-specific style rules below */}
-
-- Use active voice and second person ("you")
-- Keep sentences concise — one idea per sentence
-- Use sentence case for headings
-- Bold for UI elements: Click **Settings**
-- Code formatting for file names, commands, paths, and code references
+- Use active voice and second person ("you").
+- Keep sentences concise — one idea per sentence.
+- Use sentence case for headings.
+- Bold for UI elements: Click **Settings**.
+- Code formatting for file names, commands, paths, identifiers, and code references.
 
 ## Content boundaries
 
-{/* Define what should and shouldn't be documented */}
-{/* Example: Don't document internal admin features */}
+- The library is in alpha. Every page begins with the standard alpha-access `<Info>` callout — keep it on new pages.
+- This repo documents Nominal Instrumentation only. Nominal Core, Nominal Connect, and the dashboard are documented elsewhere — link out, don't re-document.
