@@ -15,6 +15,7 @@
         "groups": [
           {
             "group": "Getting started",
+            "icon": "rocket",
             "pages": [
               "index",
               "instrumentation/overview",
@@ -25,6 +26,7 @@
           },
           {
             "group": "Concepts",
+            "icon": "book-open",
             "pages": [
               "instrumentation/publishers",
               "instrumentation/library"
@@ -32,6 +34,7 @@
           },
           {
             "group": "Instruments",
+            "icon": "microchip",
             "pages": [
               "instrumentation/psu",
               "instrumentation/eload",
