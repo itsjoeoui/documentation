@@ -52,7 +52,7 @@
         "tab": "Examples",
         "groups": [
           {
-            "group": "Examples",
+            "group": "Overview",
             "pages": [
               "instrumentation/examples"
             ]
