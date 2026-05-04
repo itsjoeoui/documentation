@@ -23,6 +23,7 @@ Before using `nominal-instro` with specific instrument types, you must install t
 | **VISA** | SCPI/VISA-based instruments (PSUs, ELoads, Keysight DAQ) | All VISA-based driver implementations |
 | **NI-DAQmx** | National Instruments DAQ devices | `NIDAQDriver` |
 | **LJM (LabJack Module)** | LabJack T-Series devices | `LabJackDAQDriver` |
+| **MCC Universal Library (`mcculw`)** | Measurement Computing DAQ devices | `MCCDriver` |
 | **Total Phase USB Drivers** | Total Phase Aardvark I2C/SPI Host Adapter | `AardvarkI2CDriver` |
 
 ## VISA
@@ -76,6 +77,24 @@ LJM is the LabJack Module library required to communicate with LabJack T-Series 
 1. Download LJM from the [LabJack website](https://labjack.com/support/software/installers/ljm)
 2. Install the LJM package for your operating system
 3. The Python bindings (`labjack.ljm`) are typically included with the LJM installation
+
+## MCC Universal Library (`mcculw`)
+
+The MCC Universal Library is the Measurement Computing driver stack for their USB and Ethernet DAQ devices. It must be installed before using MCC devices with `nominal-instro`.
+
+### Used By
+
+- **`NominalDAQ`**: Measurement Computing DAQ devices (via `MCCDriver`)
+
+### Installation
+
+1. Download and install the MCC DAQ Software (includes InstaCal and the Universal Library) from the [Measurement Computing website](https://digilent.com/reference/software/instacal/start).
+2. Open **InstaCal** and confirm your device appears in the board list. Note the device's unique ID—you pass this as the `resource` argument to `NominalDAQ.create()`.
+3. The Python bindings (`mcculw`) are installed automatically when you install the `nominal-instro[mccdaq]` or `nominal-instro[daq]` extras.
+
+<Note>
+The MCC Universal Library is currently only available on Windows. MCC DAQ support in `nominal-instro` is therefore limited to Windows hosts.
+</Note>
 
 ## Total Phase USB Drivers
 
